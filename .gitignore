@@ -3,3 +3,5 @@ client_test
 .env
 tmp
 /bin
+.vscode
+__debug_bin*

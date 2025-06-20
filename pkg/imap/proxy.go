@@ -28,7 +28,6 @@ import (
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/commands"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/oauth2"
 
 	"go.linka.cloud/o365-imap-proxy/pkg/oauth"
 )
@@ -44,9 +43,12 @@ type Proxy interface {
 	Run(ctx context.Context) error
 }
 
-func New(tenant, clientID, clientSecret string, addr string, tlsConfig *tls.Config) (Proxy, error) {
+func New(tenant, password, clientID, clientSecret string, addr string, tlsConfig *tls.Config) (Proxy, error) {
 	if tenant == "" {
 		return nil, errors.New("tenant is required")
+	}
+	if password == "" {
+		return nil, errors.New("password is required")
 	}
 	if clientID == "" {
 		return nil, errors.New("clientID is required")
@@ -61,26 +63,32 @@ func New(tenant, clientID, clientSecret string, addr string, tlsConfig *tls.Conf
 			addr = ":993"
 		}
 	}
+
+	auth, err := oauth.New(tenant, clientID, clientSecret)
+	if err != nil {
+		return nil, err
+	}
+
 	return &proxy{
-		addr: addr,
-		auth: oauth.New(tenant, clientID, clientSecret),
-		log:  logrus.StandardLogger().WithField("service", "imap"),
-		tls:  tlsConfig,
+		password: password,
+		addr:     addr,
+		auth:     auth,
+		log:      logrus.StandardLogger().WithField("service", "imap"),
+		tls:      tlsConfig,
 	}, nil
 }
 
 type proxy struct {
-	addr string
-	auth oauth.Provider
-	log  logrus.FieldLogger
-	tls  *tls.Config
+	password string
+	addr     string
+	auth     *oauth.Provider
+	log      logrus.FieldLogger
+	tls      *tls.Config
 }
 
 type state struct {
 	authenticating bool
 	authenticated  bool
-	user           string
-	token          *oauth2.Token
 }
 
 func (p *proxy) Run(ctx context.Context) error {
@@ -156,22 +164,7 @@ func (p *proxy) handle(ctx context.Context, client net.Conn) error {
 	var mu sync.RWMutex
 	var state state
 
-	defer func() {
-		mu.RLock()
-		defer mu.RUnlock()
-		if state.token == nil {
-			return
-		}
-		if err := p.auth.Logout(ctx, state.token); err != nil {
-			log.Errorf("failed to logout: %v", err)
-		}
-		if state.user != "" {
-			log.Infof("Logged out %s", state.user)
-		} else {
-			log.Infof("Logged out")
-		}
-	}()
-	getLoginCmd := func(ctx context.Context, user, pass string) (*imap.Command, error) {
+	getLoginCmd := func(_ context.Context, user, pass string) (*imap.Command, error) {
 		var (
 			mailbox string
 			parts   = strings.Split(user, `\`)
@@ -195,18 +188,19 @@ func (p *proxy) handle(ctx context.Context, client net.Conn) error {
 			return nil, errors.New("invalid user format found")
 		}
 
-		log.Infof("Login attempt for %s", user)
-
-		state.user = user
-		state.token, err = p.auth.Login(ctx, user, pass)
-		if err != nil {
-			return nil, fmt.Errorf("getting token: %w", err)
+		if pass != p.password {
+			return nil, errors.New("invalid password found")
 		}
 
-		log.Infof("Logged in %s", user)
+		log.Infof("Login attempt for %s", user)
+
+		token, err := p.auth.GetAccessToken()
+		if err != nil {
+			return nil, err
+		}
 		xoauth2 := &commands.Authenticate{
 			Mechanism:       "XOAUTH2",
-			InitialResponse: []byte("user=" + mailbox + "\x01auth=Bearer " + state.token.AccessToken + "\x01\x01"),
+			InitialResponse: []byte("user=" + mailbox + "\x01auth=Bearer " + token + "\x01\x01"),
 		}
 
 		return xoauth2.Command(), nil

@@ -2,7 +2,7 @@
 
 o365-imap-proxy is a proxy server that allows you to connect to the Office 365 IMAP server using PLAIN AUTH authentication.
 
-It uses the OAuth2 Password flow with the PLAIN AUTH credentials to obtain an access token and then uses it to authenticate to the IMAP server with XAUTH2.
+It uses a confidential client to obtain an access token and then uses it to authenticate to the IMAP server with XAUTH2. A single password with the PLAIN AUTH credentials is checked if access is allowed.
 
 The main use case is to allow incompatible email clients and legacy applications to connect to the Office 365 IMAP server.
 
@@ -10,12 +10,11 @@ The main use case is to allow incompatible email clients and legacy applications
 
 The proxy needs an Azure AD application to be registered in order to obtain the OAuth2 credentials.
 
-The application must be configured with "**Resource Owner Password Credential Flow**" enabled and have the following permissions:
-- `User.Read`
+The application must be configured with the following delegated permissions:
 - `IMAP.AccessAsUser.All`
 
 
-See [Microsoft docs](https://docs.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth#use-client-credentials-grant-flow-to-authenticate-imap-and-pop-connections).
+See [Microsoft docs](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth#use-client-credentials-grant-flow-to-authenticate-smtp-imap-and-pop-connections).
 
 ## Installation
 
@@ -27,7 +26,7 @@ docker pull linkacloud/o365-imap-proxy:latest
 
 ### From source
 
-To build the binary from source, you need to have Go >= 1.18 installed on your machine.
+To build the binary from source, you need to have Go >= 1.24.3 installed on your machine.
 
 ```bash
 git clone https://github.com/linka-cloud/o365-imap-proxy.git
@@ -42,7 +41,7 @@ The binary will be available in the `bin` directory.
 ```bash
 $ o365-imap-proxy --help 
 
-Office365 IMAP proxy allows to keep using IMAP clients without XOAUTH2 support with Office365 accounts by providing PLAIN AUTH support.
+Office365 IMAP proxy allows to keep using IMAP clients without XOAUTH2 support with Office365 delegated permissions.
 
 Usage:
   o365-imap-proxy [flags]
@@ -53,6 +52,7 @@ Flags:
       --client-secret string   The Azure App client secret [$CLIENT_SECRET]
       --debug                  Enable debug logging
   -h, --help                   help for o365-imap-proxy
+      --password string        The password needed to access this bridge [$PASSWORD]
       --tenant string          The Azure AD tenant id [$TENANT]
       --tls                    Enable TLS using generated self-signed certificate
 ```
@@ -61,6 +61,7 @@ The proxy can be configured using environment variables:
 - `TENANT`: the Azure AD tenant ID
 - `CLIENT_ID`: the Azure AD application client ID
 - `CLIENT_SECRET`: the Azure AD application client secret
+- `PASSWORD`: the password needed to access this bridge
 
 ### Docker
 
@@ -69,6 +70,7 @@ docker run --name o365-imap-proxy \
   -e TENANT=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx \
   -e CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx \
   -e CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxx \
+  -e PASSWORD=xxxxxxxxxxxxxxxxxxxx \
   -p 143:143 \
   linkacloud/o365-imap-proxy:latest
 ```
@@ -92,6 +94,7 @@ services:
       TENANT: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
       CLIENT_ID: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
       CLIENT_SECRET: "xxxxxxxxxxxxxxxxxxxx"
+      PASSWORD: "xxxxxxxxxxxxxxxxxxxx"
 ```
 
 ```bash
@@ -104,6 +107,6 @@ docker-compose up -d
 export TENANT=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 export CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 export CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxx
+export PASSWORD=xxxxxxxxxxxxxxxxxxxx
 o365-imap-proxy --tls
 ```
-

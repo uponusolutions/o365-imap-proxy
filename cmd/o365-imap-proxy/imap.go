@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"syscall"
 
 	cli "github.com/rancher/wrangler-cli"
 	"github.com/sirupsen/logrus"
@@ -41,6 +42,7 @@ func NewImapCmd() *cobra.Command {
 
 type ImapCmd struct {
 	Tenant       string `env:"TENANT" usage:"The Azure AD tenant id [$TENANT]"`
+	Password     string `env:"PASSWORD" usage:"The password needed to access this bridge [$PASSWORD]"`
 	ClientID     string `env:"CLIENT_ID" usage:"The Azure App client id [$CLIENT_ID]"`
 	ClientSecret string `env:"CLIENT_SECRET" usage:"The Azure App client secret [$CLIENT_SECRET]"`
 	Address      string `env:"ADDRESS" usage:"The address to listen on [$ADDRESS] defaults to :143 or :993 if TLS is enabled"`
@@ -72,12 +74,12 @@ func (c *ImapCmd) Run(cmd *cobra.Command, _ []string) error {
 			c.Address = ":143"
 		}
 	}
-	p, err := imap.New(c.Tenant, c.ClientID, c.ClientSecret, c.Address, tlsConfig)
+	p, err := imap.New(c.Tenant, c.Password, c.ClientID, c.ClientSecret, c.Address, tlsConfig)
 	if err != nil {
 		return err
 	}
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, os.Kill)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	errs := make(chan error, 1)
 	go func() {
 		errs <- p.Run(ctx)
